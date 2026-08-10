@@ -1,0 +1,20 @@
+# SQLite Database & Export Data
+*.db
+*.db-wal
+*.db-shm
+*.csv
+
+# Python & Virtual Environment Caches
+__pycache__/
+*.pyc
+.env
+venv/
+scratch/
+
+# IDE & Operating System Metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+reset_and_update.py
+DEPLOYMENT.md

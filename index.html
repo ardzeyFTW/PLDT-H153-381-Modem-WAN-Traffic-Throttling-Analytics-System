@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Modem WAN Traffic &amp; Daily Usage Analytics — PLDT H153-381</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&amp;display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="navbar">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>Modem Traffic &amp; Throttling Analytics</h1>
+          <span class="sub-badge">PLDT H153-381 Modem API (192.168.1.1) &bull; All-Device WAN Traffic</span>
+        </div>
+      </div>
+
+      <div class="status-bar">
+        <div class="status-item">
+          <span class="label">System Status</span>
+          <span class="status-pill active" id="systemStatusPill">
+            <span class="dot"></span> UNTHROTTLED
+          </span>
+        </div>
+        <div class="status-item">
+          <span class="label">Modem IP</span>
+          <span class="valueHighlight">192.168.1.1</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Today Usage</span>
+          <span class="valueHighlight" id="headerTodayUsage">0.00 GB</span>
+        </div>
+        <div class="status-item">
+          <span class="label">DB Samples</span>
+          <span class="valueHighlight" id="headerDbRecords">--</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Dashboard Grid -->
+    <main class="dashboard-grid">
+      <!-- Live Real-time Bandwidth Cards -->
+      <section class="card gauge-card">
+        <div class="card-header">
+          <h2>Live Internet Bandwidth</h2>
+          <span class="badge" id="liveStatusBadge">Direct Modem API (192.168.1.1)</span>
+        </div>
+
+        <div class="gauges-wrapper">
+          <!-- Download Card -->
+          <div class="gauge-box download-theme">
+            <div class="gauge-title">DOWNLOAD SPEED</div>
+            <div class="gauge-value-display">
+              <span id="dlSpeedVal">0.00</span>
+              <span class="unit">Mbps</span>
+            </div>
+            <div class="gauge-sub">
+              <span>Avg Today: <strong id="dlAvgVal">0.00 Mbps</strong></span>
+              <span>Peak: <strong id="dlPeakVal">0.00 Mbps</strong></span>
+            </div>
+            <div class="meter-bar-container">
+              <div class="meter-bar-fill" id="dlMeterFill" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Upload Card -->
+          <div class="gauge-box upload-theme">
+            <div class="gauge-title">UPLOAD SPEED</div>
+            <div class="gauge-value-display">
+              <span id="ulSpeedVal">0.00</span>
+              <span class="unit">Mbps</span>
+            </div>
+            <div class="gauge-sub">
+              <span>Avg Today: <strong id="ulAvgVal">0.00 Mbps</strong></span>
+              <span>Peak: <strong id="ulPeakVal">0.00 Mbps</strong></span>
+            </div>
+            <div class="meter-bar-container">
+              <div class="meter-bar-fill" id="ulMeterFill" style="width: 0%;"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Today's Cumulative & Lifetime Usage Tracker -->
+      <section class="card summary-card">
+        <div class="card-header">
+          <h2>Data Volume &amp; Lifetime Accounting</h2>
+          <span class="date-badge" id="currentDateBadge">Today</span>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-tile download-tile">
+            <div class="tile-content">
+              <span class="tile-label">Today Downloaded</span>
+              <div class="tile-value" id="todayDlVal">0.00 GB</div>
+              <span class="tile-sub" id="todayDlBytesSub">0 Bytes</span>
+            </div>
+          </div>
+
+          <div class="metric-tile upload-tile">
+            <div class="tile-content">
+              <span class="tile-label">Today Uploaded</span>
+              <div class="tile-value" id="todayUlVal">0.00 GB</div>
+              <span class="tile-sub" id="todayUlBytesSub">0 Bytes</span>
+            </div>
+          </div>
+
+          <div class="metric-tile total-tile" style="border-left-color:#00f0ff">
+            <div class="tile-content">
+              <span class="tile-label">Lifetime DL / UL</span>
+              <div class="tile-value" id="lifetimeDlVal" style="font-size:1.15rem">0.00 GB DL / 0.00 GB UL</div>
+              <span class="tile-sub">Accumulates continuously</span>
+            </div>
+          </div>
+
+          <div class="metric-tile total-tile">
+            <div class="tile-content">
+              <span class="tile-label">Midnight Reset Countdown</span>
+              <div class="tile-value" id="midnightCountdown">00:00:00</div>
+              <span class="tile-sub">Daily reset at ~00:00:00</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Internet Speed vs. Time Analytics Chart -->
+      <section class="card chart-card">
+        <div class="card-header">
+          <h2>Internet Speed (Mbps) &amp; Daily Usage (GB) vs. Time</h2>
+
+          <div class="time-range-toolbar">
+            <span class="range-label">Time Window:</span>
+            <select id="timeRangeSelect" class="time-range-select">
+              <option value="today" selected>Today (from midnight)</option>
+              <option value="1min">Last 1 Minute</option>
+              <option value="5m">Last 5 Minutes</option>
+              <option value="30m">Last 30 Minutes</option>
+              <option value="1h">Last 1 Hour</option>
+              <option value="6h">Last 6 Hours</option>
+              <option value="12h">Last 12 Hours</option>
+              <option value="1d">Last 24 Hours</option>
+              <option value="3d">Last 3 Days</option>
+              <option value="1w">Last 1 Week</option>
+              <option value="1m">Last 1 Month</option>
+              <option value="lifetime">Lifetime (All Data)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="chart-legend-bar">
+          <div class="chart-legend">
+            <span class="legend-item legend-dl"><span class="color-dot"></span> Download Speed (Mbps)</span>
+            <span class="legend-item legend-ul"><span class="color-dot"></span> Upload Speed (Mbps)</span>
+            <span class="legend-item" style="color:#ffb703"><span class="color-dot" style="background:#ffb703;border-color:#ffb703"></span> Daily Usage (GB)</span>
+            <span class="legend-item" style="color:#00ff88"><span class="color-dot" style="background:rgba(0,255,136,0.35);border-color:#00ff88"></span> Unthrottled</span>
+            <span class="legend-item" style="color:#ff0055"><span class="color-dot" style="background:rgba(255,0,85,0.4);border-color:#ff0055"></span> Throttled</span>
+            <span class="legend-item" style="color:#8b949e"><span class="color-dot" style="background:transparent;border:1px dashed #8b949e"></span> No Internet (Gap)</span>
+          </div>
+        </div>
+
+        <!-- Selected Time Window Statistics Bar -->
+        <div class="window-stats-bar">
+          <div class="w-stat">
+            <span class="w-label">Window Downloaded:</span>
+            <span class="w-val highlight-cyan" id="wDlVal">0.00 MB</span>
+          </div>
+          <div class="w-stat">
+            <span class="w-label">Window Uploaded:</span>
+            <span class="w-val highlight-violet" id="wUlVal">0.00 MB</span>
+          </div>
+          <div class="w-stat">
+            <span class="w-label">Window Peak Speed:</span>
+            <span class="w-val" id="wPeakVal">0.00 Mbps</span>
+          </div>
+          <div class="w-stat">
+            <span class="w-label">Window Avg Speed:</span>
+            <span class="w-val" id="wAvgVal">0.00 Mbps</span>
+          </div>
+        </div>
+
+        <div class="chart-container">
+          <canvas id="speedTimeChart" width="1000" height="300"></canvas>
+        </div>
+      </section>
+
+      <!-- Active Speed Probe Control & Stress Test Log Table -->
+      <section class="card history-card" style="border-left: 4px solid var(--cyan-glow)">
+        <div class="card-header">
+          <h2>Active Speed Stress Tests &amp; Diagnostic Logs</h2>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <span class="badge" id="nextTestCountdownBadge" style="background:rgba(255,255,255,0.06);color:var(--text-muted);border:1px solid rgba(255,255,255,0.12)">Next test in: --:--</span>
+            <button id="runSpeedTestBtn" class="btn btn-export">
+              Run Speed Test Now
+            </button>
+          </div>
+        </div>
+
+        <div class="info-table-container">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Date &amp; Time</th>
+                <th>Tested Download Speed</th>
+                <th>Provider</th>
+                <th>Today DL / UL GB</th>
+                <th>Lifetime DL / UL GB</th>
+                <th>Throttled Status</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody id="speedProbeTableBody">
+              <tr>
+                <td colspan="7" class="loading-td">Loading active stress test &amp; diagnostic logs...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-pagination-bar" style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-top:1px solid rgba(255,255,255,0.06);background:rgba(10,12,18,0.4)">
+          <span id="probePageInfo" style="font-size:0.85em;color:var(--text-muted)">Showing 0 of 0 logs</span>
+          <div style="display:flex;gap:8px">
+            <button id="probePrevBtn" class="btn btn-small" style="padding:4px 12px;background:rgba(255,255,255,0.06);color:#ccd6f6;border:1px solid rgba(255,255,255,0.12);border-radius:6px;cursor:pointer">&laquo; Prev</button>
+            <button id="probeNextBtn" class="btn btn-small" style="padding:4px 12px;background:rgba(255,255,255,0.06);color:#ccd6f6;border:1px solid rgba(255,255,255,0.12);border-radius:6px;cursor:pointer">Next &raquo;</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Daily Historical Usage Table -->
+      <section class="card history-card">
+        <div class="card-header">
+          <h2>Daily Usage History Log</h2>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="exportDaysSelect" class="btn btn-small" style="padding:5px 10px;background:rgba(255,255,255,0.06);color:#ccd6f6;border:1px solid rgba(255,255,255,0.12);border-radius:6px;cursor:pointer">
+              <option value="7">Last 7 days</option>
+              <option value="14">Last 14 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="0">All time</option>
+            </select>
+            <button id="exportCsvBtn" class="btn btn-export">Export Data CSV</button>
+            <button id="resetDbBtn" class="btn btn-small" style="background:rgba(255,0,85,0.15);color:#ff5577;border:1px solid rgba(255,0,85,0.35);cursor:pointer">
+              Reset DB
+            </button>
+          </div>
+        </div>
+
+        <div class="info-table-container">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Total Downloaded</th>
+                <th>Total Uploaded</th>
+                <th>Peak Speed</th>
+                <th>Active Avg Speed</th>
+              </tr>
+            </thead>
+            <tbody id="dailyHistoryTableBody">
+              <tr>
+                <td colspan="5" class="loading-td">Loading historical modem traffic data...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Event Terminal -->
+      <section class="card terminal-card">
+        <div class="card-header">
+          <h2>Connection &amp; Diagnostics Log</h2>
+          <button id="clearLogsBtn" class="btn btn-small">Clear Log</button>
+        </div>
+        <div class="terminal-body" id="terminalLog">
+          <div class="log-line system">[SYSTEM] Modem Traffic &amp; Daily Usage Monitor initialized.</div>
+          <div class="log-line info">[ENGINE] Connecting to PLDT H153-381 modem at http://192.168.1.1/...</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
