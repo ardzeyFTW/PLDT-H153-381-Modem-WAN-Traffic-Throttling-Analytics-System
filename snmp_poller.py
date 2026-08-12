@@ -75,6 +75,7 @@ ISP_THROTTLE_CAP_MBPS = 5.0
 THROTTLE_THRESHOLD_MBPS = 15.0  # Speed test threshold (< 15.0 Mbps under load = Throttled)
 
 SPEED_TEST_TARGET = "https://github.com/torvalds/linux/archive/refs/heads/master.zip"
+SPEED_TEST_TARGET_2 = "https://speed.cloudflare.com/__down?bytes=50000000"
 
 RANGE_SECONDS_MAP = {
     "1min":     60,
@@ -342,17 +343,17 @@ def load_cache_from_db():
 
 
 # ─── Active Speed Stress Test Prober ──────────────────────────────────────────
-def _try_single_provider(url, duration_sec=4.0, n_threads=6):
+def _exec_dual_speed_test(duration_sec=6.0, n_threads=4):
     """
-    Try downloading from a single provider with n_threads concurrent connections.
-    Returns (mbps, downloaded_bytes). Returns (0.0, 0) if the provider fails.
+    Executes a speed test against both providers concurrently.
     """
+    url1 = SPEED_TEST_TARGET
+    url2 = SPEED_TEST_TARGET_2
+    print(f"[SPEED TEST] Trying dual providers: Github and Cloudflare...")
+    
     stop_event = threading.Event()
-    downloaded_bytes = 0
-    bytes_lock = threading.Lock()
-
-    def worker():
-        nonlocal downloaded_bytes
+    
+    def worker(url):
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
@@ -360,42 +361,19 @@ def _try_single_provider(url, duration_sec=4.0, n_threads=6):
                     chunk = resp.read(65536)
                     if not chunk:
                         break
-                    with bytes_lock:
-                        downloaded_bytes += len(chunk)
         except Exception:
             pass
 
-    threads = [threading.Thread(target=worker, daemon=True) for _ in range(n_threads)]
-    t_start = time.time()
+    threads = []
+    for _ in range(n_threads):
+        threads.append(threading.Thread(target=worker, args=(url1,), daemon=True))
+        threads.append(threading.Thread(target=worker, args=(url2,), daemon=True))
+        
     for t in threads:
         t.start()
-
+        
     time.sleep(duration_sec)
     stop_event.set()
-    t_elapsed = max(0.1, time.time() - t_start)
-    mbps = round((downloaded_bytes * 8 / t_elapsed) / 1_000_000, 2)
-    return mbps, downloaded_bytes
-
-
-def _exec_speed_test(duration_sec=4.0, n_threads=6):
-    """
-    Executes a speed test against the primary provider without fallback.
-    Returns (mbps, provider_url_used).
-    """
-    url = SPEED_TEST_TARGET
-    print(f"[SPEED TEST] Trying provider: {url.split('/')[2]}...")
-    try:
-        mbps, dl_bytes = _try_single_provider(url, duration_sec=duration_sec, n_threads=n_threads)
-        if mbps > 0.0:
-            print(f"[SPEED TEST] Provider {url.split('/')[2]} succeeded: {mbps} Mbps")
-            return mbps, url
-        else:
-            print(f"[SPEED TEST] Provider {url.split('/')[2]} returned 0 Mbps.")
-    except Exception as e:
-        print(f"[SPEED TEST] Provider {url.split('/')[2]} error: {e}")
-
-    print("[SPEED TEST] Provider failed — returning 0 Mbps.")
-    return 0.0, "none"
 
 
 def run_speed_test_probe():
@@ -433,22 +411,49 @@ def launch_probe_if_free():
     return True
 
 def _run_speed_test_probe_internal():
-    print("[ACTIVE PROBE] Starting active speed test...")
-    mbps_1, provider_1 = _exec_speed_test(duration_sec=4.0, n_threads=6)
-    try:
-        from urllib.parse import urlparse as _urlparse
-        provider_used = _urlparse(provider_1).netloc if provider_1 != 'none' else 'none'
-    except Exception:
-        provider_used = provider_1
+    print("[ACTIVE PROBE] Starting active speed test (Dual Providers)...")
+    
+    test_start_ts = int(time.time())
+    _exec_dual_speed_test(duration_sec=6.0, n_threads=4)
+    test_end_ts = int(time.time())
+    
+    provider_used = "github+cloudflare"
+    
+    # Give the poller a small buffer to write the last sample
+    time.sleep(1.0)
+    
+    # Query sample_cache for the peak dl_mbps during the test window
+    with cache_lock:
+        test_samples = [s for s in sample_cache if s["ts"] >= test_start_ts and s["ts"] <= test_end_ts + 1]
+    
+    if test_samples:
+        peak_mbps = max(s["dl_mbps"] for s in test_samples)
+    else:
+        peak_mbps = 0.0
+        
+    mbps_1 = peak_mbps
 
     is_throttled = False
     verified_mbps = mbps_1
     status_desc = ""
 
     if mbps_1 < THROTTLE_THRESHOLD_MBPS:
-        print(f"[ACTIVE PROBE] Test 1: {mbps_1} Mbps via {provider_1.split('/')[2] if provider_1 != 'none' else 'no provider'}. Running 2nd verification in 3s...")
+        print(f"[ACTIVE PROBE] Test 1: Peak {mbps_1} Mbps. Running 2nd verification in 3s...")
         time.sleep(3.0)
-        mbps_2, provider_2 = _exec_speed_test(duration_sec=4.0, n_threads=6)
+        
+        test_start_ts_2 = int(time.time())
+        _exec_dual_speed_test(duration_sec=6.0, n_threads=4)
+        test_end_ts_2 = int(time.time())
+        
+        time.sleep(1.0)
+        
+        with cache_lock:
+            test_samples_2 = [s for s in sample_cache if s["ts"] >= test_start_ts_2 and s["ts"] <= test_end_ts_2 + 1]
+            
+        if test_samples_2:
+            mbps_2 = max(s["dl_mbps"] for s in test_samples_2)
+        else:
+            mbps_2 = 0.0
 
         if mbps_1 == 0.0 and mbps_2 == 0.0:
             is_throttled = True
@@ -851,6 +856,7 @@ def query_samples(range_str, min_ts=None, max_ts=None):
         try:
             min_ts_val = float(min_ts)
             max_ts_val = float(max_ts)
+            range_sec = max_ts_val - min_ts_val
 
             with cache_lock:
                 filtered = [s for s in sample_cache if min_ts_val <= s["ts"] <= max_ts_val]
@@ -858,12 +864,33 @@ def query_samples(range_str, min_ts=None, max_ts=None):
 
             if not filtered or (sample_cache and (min_ts_val < sample_cache[0]["ts"] or max_ts_val > sample_cache[-1]["ts"])):
                 conn = get_db()
-                rows = conn.execute("""
-                    SELECT ts, dl_mbps, ul_mbps, dl_bytes_delta, ul_bytes_delta,
-                           today_dl_gb, today_ul_gb, lifetime_dl_gb, lifetime_ul_gb, date,
-                           status_label
-                    FROM traffic_samples WHERE ts >= ? AND ts <= ? ORDER BY ts ASC
-                """, (int(min_ts_val), int(max_ts_val))).fetchall()
+                if range_sec > 86400:
+                    bkt = max(1, int(range_sec // 400))
+                    sql = f"""
+                        SELECT 
+                            (ts / {bkt}) * {bkt} AS ts,
+                            MAX(dl_mbps) as dl_mbps, MAX(ul_mbps) as ul_mbps,
+                            SUM(dl_bytes_delta) as dl_bytes_delta, SUM(ul_bytes_delta) as ul_bytes_delta,
+                            MAX(today_dl_gb) as today_dl_gb, MAX(today_ul_gb) as today_ul_gb,
+                            MAX(lifetime_dl_gb) as lifetime_dl_gb, MAX(lifetime_ul_gb) as lifetime_ul_gb,
+                            MAX(date) as date,
+                            CASE 
+                                WHEN SUM(CASE WHEN status_label = 'Throttled' THEN 1 ELSE 0 END) > 0 THEN 'Throttled'
+                                WHEN SUM(CASE WHEN status_label = 'No Internet' THEN 1 ELSE 0 END) > 0 THEN 'No Internet'
+                                ELSE 'Unthrottled'
+                            END as status_label
+                        FROM traffic_samples
+                        WHERE ts >= ? AND ts <= ?
+                        GROUP BY (ts / {bkt}) ORDER BY ts ASC
+                    """
+                    rows = conn.execute(sql, (int(min_ts_val), int(max_ts_val))).fetchall()
+                else:
+                    rows = conn.execute("""
+                        SELECT ts, dl_mbps, ul_mbps, dl_bytes_delta, ul_bytes_delta,
+                               today_dl_gb, today_ul_gb, lifetime_dl_gb, lifetime_ul_gb, date,
+                               status_label
+                        FROM traffic_samples WHERE ts >= ? AND ts <= ? ORDER BY ts ASC
+                    """, (int(min_ts_val), int(max_ts_val))).fetchall()
                 daily_rows = conn.execute("SELECT * FROM daily_stats ORDER BY date ASC").fetchall()
                 conn.close()
                 filtered = [dict(r) for r in rows]
@@ -878,12 +905,25 @@ def query_samples(range_str, min_ts=None, max_ts=None):
             if lifetime_cache_data["result"] is not None and (now_ts - lifetime_cache_data["ts"]) < 10:
                 return lifetime_cache_data["result"]
         conn = get_db()
-        rows = conn.execute("""
-            SELECT ts, dl_mbps, ul_mbps, dl_bytes_delta, ul_bytes_delta,
-                   today_dl_gb, today_ul_gb, lifetime_dl_gb, lifetime_ul_gb, date,
-                   status_label
-            FROM traffic_samples ORDER BY ts ASC
-        """).fetchall()
+        row = conn.execute("SELECT MIN(ts), MAX(ts) FROM traffic_samples").fetchone()
+        bkt = max(1, (row[1] - row[0]) // 400) if row and row[0] and row[1] else 1
+        sql = f"""
+            SELECT 
+                (ts / {bkt}) * {bkt} AS ts,
+                MAX(dl_mbps) as dl_mbps, MAX(ul_mbps) as ul_mbps,
+                SUM(dl_bytes_delta) as dl_bytes_delta, SUM(ul_bytes_delta) as ul_bytes_delta,
+                MAX(today_dl_gb) as today_dl_gb, MAX(today_ul_gb) as today_ul_gb,
+                MAX(lifetime_dl_gb) as lifetime_dl_gb, MAX(lifetime_ul_gb) as lifetime_ul_gb,
+                MAX(date) as date,
+                CASE 
+                    WHEN SUM(CASE WHEN status_label = 'Throttled' THEN 1 ELSE 0 END) > 0 THEN 'Throttled'
+                    WHEN SUM(CASE WHEN status_label = 'No Internet' THEN 1 ELSE 0 END) > 0 THEN 'No Internet'
+                    ELSE 'Unthrottled'
+                END as status_label
+            FROM traffic_samples
+            GROUP BY (ts / {bkt}) ORDER BY ts ASC
+        """
+        rows = conn.execute(sql).fetchall()
         daily_rows = conn.execute("SELECT * FROM daily_stats ORDER BY date ASC").fetchall()
         conn.close()
         filtered = [dict(r) for r in rows]
@@ -902,21 +942,26 @@ def query_samples(range_str, min_ts=None, max_ts=None):
             daily    = dict(daily_cache)
     else:
         conn = get_db()
-        if range_seconds > 0:
-            cutoff = int(now_ts) - range_seconds
-            rows = conn.execute("""
-                SELECT ts, dl_mbps, ul_mbps, dl_bytes_delta, ul_bytes_delta,
-                       today_dl_gb, today_ul_gb, lifetime_dl_gb, lifetime_ul_gb, date,
-                       status_label
-                FROM traffic_samples WHERE ts >= ? ORDER BY ts ASC
-            """, (cutoff,)).fetchall()
-        else:
-            rows = conn.execute("""
-                SELECT ts, dl_mbps, ul_mbps, dl_bytes_delta, ul_bytes_delta,
-                       today_dl_gb, today_ul_gb, lifetime_dl_gb, lifetime_ul_gb, date,
-                       status_label
-                FROM traffic_samples ORDER BY ts ASC
-            """).fetchall()
+        cutoff = int(now_ts) - range_seconds
+        bkt = max(1, int(range_seconds // 400))
+        sql = f"""
+            SELECT 
+                (ts / {bkt}) * {bkt} AS ts,
+                MAX(dl_mbps) as dl_mbps, MAX(ul_mbps) as ul_mbps,
+                SUM(dl_bytes_delta) as dl_bytes_delta, SUM(ul_bytes_delta) as ul_bytes_delta,
+                MAX(today_dl_gb) as today_dl_gb, MAX(today_ul_gb) as today_ul_gb,
+                MAX(lifetime_dl_gb) as lifetime_dl_gb, MAX(lifetime_ul_gb) as lifetime_ul_gb,
+                MAX(date) as date,
+                CASE 
+                    WHEN SUM(CASE WHEN status_label = 'Throttled' THEN 1 ELSE 0 END) > 0 THEN 'Throttled'
+                    WHEN SUM(CASE WHEN status_label = 'No Internet' THEN 1 ELSE 0 END) > 0 THEN 'No Internet'
+                    ELSE 'Unthrottled'
+                END as status_label
+            FROM traffic_samples
+            WHERE ts >= ?
+            GROUP BY (ts / {bkt}) ORDER BY ts ASC
+        """
+        rows = conn.execute(sql, (cutoff,)).fetchall()
         daily_rows = conn.execute("SELECT * FROM daily_stats ORDER BY date ASC").fetchall()
         conn.close()
         filtered = [dict(r) for r in rows]
