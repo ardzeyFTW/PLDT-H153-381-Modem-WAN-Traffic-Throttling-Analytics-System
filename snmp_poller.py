@@ -134,6 +134,7 @@ current_state = {
 cache_lock   = threading.Lock()
 sample_cache = []
 daily_cache  = {}
+_peak_override_cooldown_ts = 0  # Unix ts: do not insert another peak-override probe before this time
 
 # ─── Poll Loop Accumulators (module-level so reset_database can zero them) ────
 poll_day_stats        = {}   # keyed by date string
@@ -340,6 +341,48 @@ def load_cache_from_db():
         daily_cache  = {r["date"]: dict(r) for r in daily_rows}
 
     print(f"[CACHE] Loaded {len(sample_cache)} samples (last 24h), {len(daily_cache)} daily records from DB.")
+
+
+def _insert_peak_override_probe(dl_mbps: float):
+    """
+    Insert a synthetic speed_probe record when real SNMP traffic exceeds the throttle
+    threshold while the status is 'Throttled'. This auto-overrides the throttle label
+    without requiring a formal speed test — any device on the network saturating the WAN
+    at >=15 Mbps proves the line is not throttled at that moment.
+    """
+    global _peak_override_cooldown_ts
+    now_ts  = int(time.time())
+    dt_str  = get_local_datetime(now_ts).strftime('%Y-%m-%d')
+    status_desc = (
+        f"PEAK OVERRIDE: Real WAN traffic reached {dl_mbps:.2f} Mbps "
+        f"\u2265 {THROTTLE_THRESHOLD_MBPS} Mbps \u2014 auto-marked Unthrottled"
+    )
+
+    with state_lock:
+        t_dl_gb = round(current_state.get('today_download_bytes',    0) / (1024**3), 3)
+        t_ul_gb = round(current_state.get('today_upload_bytes',      0) / (1024**3), 3)
+        l_dl_gb = round(current_state.get('lifetime_download_bytes', 0) / (1024**3), 3)
+        l_ul_gb = round(current_state.get('lifetime_upload_bytes',   0) / (1024**3), 3)
+        current_state["status"] = "Unthrottled"
+
+    conn = get_db()
+    try:
+        conn.execute("""
+            INSERT INTO speed_probes
+              (ts, date, dl_mbps, ul_mbps, today_dl_gb, today_ul_gb,
+               lifetime_dl_gb, lifetime_ul_gb, is_throttled, provider, status_desc)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """, (now_ts, dt_str, round(dl_mbps, 2), 0.0, t_dl_gb, t_ul_gb,
+               l_dl_gb, l_ul_gb, 0, "peak-override", status_desc))
+        conn.commit()
+        print(f"[PEAK OVERRIDE] {status_desc}")
+    except Exception as e:
+        print(f"[PEAK OVERRIDE DB ERROR] {e}")
+    finally:
+        conn.close()
+
+    sync_sample_status_from_probes()
+    load_cache_from_db()
 
 
 # ─── Active Speed Stress Test Prober ──────────────────────────────────────────
@@ -762,6 +805,23 @@ def poll_modem_loop():
 
                             curr_sys_status = current_state.get("status", "Unthrottled")
 
+                        # ── Peak-Override: if currently Throttled but real traffic exceeds threshold,
+                        #    auto-flip to Unthrottled so other-device saturation never falsely tags
+                        #    normal traffic as throttled. Cooldown: 60 s between synthetic probes.
+                        global _peak_override_cooldown_ts
+                        if curr_sys_status == "Throttled" and dl_mbps >= THROTTLE_THRESHOLD_MBPS:
+                            now_int = int(now)
+                            if now_int >= _peak_override_cooldown_ts:
+                                _peak_override_cooldown_ts = now_int + 60
+                                curr_sys_status = "Unthrottled"
+                                with state_lock:
+                                    current_state["status"] = "Unthrottled"
+                                threading.Thread(
+                                    target=_insert_peak_override_probe,
+                                    args=(dl_mbps,),
+                                    daemon=True
+                                ).start()
+
                         sample_entry = {
                             "ts":             int(now),
                             "dl_mbps":        dl_mbps,
@@ -902,7 +962,7 @@ def query_samples(range_str, min_ts=None, max_ts=None):
     elif rng_lower == "lifetime":
         # Fast 10-second RAM cache for lifetime / all-data queries (0ms latency)
         with lifetime_cache_lock:
-            if lifetime_cache_data["result"] is not None and (now_ts - lifetime_cache_data["ts"]) < 10:
+            if lifetime_cache_data["result"] is not None and (now_ts - lifetime_cache_data["ts"]) < 30:
                 return lifetime_cache_data["result"]
         conn = get_db()
         row = conn.execute("SELECT MIN(ts), MAX(ts) FROM traffic_samples").fetchone()
@@ -1179,6 +1239,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", ct)
                 self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
                 self.end_headers()
                 with open(fpath, "rb") as f:
                     self.wfile.write(f.read())

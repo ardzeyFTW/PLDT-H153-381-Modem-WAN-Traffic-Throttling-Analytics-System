@@ -115,7 +115,7 @@
             </div>
           </div>
 
-          <div class="metric-tile total-tile" style="border-left-color:#00f0ff">
+          <div class="metric-tile total-tile">
             <div class="tile-content">
               <span class="tile-label">Lifetime DL / UL</span>
               <div class="tile-value" id="lifetimeDlVal" style="font-size:1.15rem">0.00 GB DL / 0.00 GB UL</div>
@@ -194,7 +194,7 @@
       </section>
 
       <!-- Active Speed Probe Control & Stress Test Log Table -->
-      <section class="card history-card" style="border-left: 4px solid var(--cyan-glow)">
+      <section class="card history-card">
         <div class="card-header">
           <h2>Active Speed Stress Tests &amp; Diagnostic Logs</h2>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -211,7 +211,6 @@
               <tr>
                 <th>Date &amp; Time</th>
                 <th>Tested Download Speed</th>
-                <th>Provider</th>
                 <th>Today DL / UL GB</th>
                 <th>Lifetime DL / UL GB</th>
                 <th>Throttled Status</th>
@@ -220,7 +219,7 @@
             </thead>
             <tbody id="speedProbeTableBody">
               <tr>
-                <td colspan="7" class="loading-td">Loading active stress test &amp; diagnostic logs...</td>
+                <td colspan="6" class="loading-td">Loading active stress test &amp; diagnostic logs...</td>
               </tr>
             </tbody>
           </table>

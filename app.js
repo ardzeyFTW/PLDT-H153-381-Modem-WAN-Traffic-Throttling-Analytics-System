@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (isDragging) {
       dragCurrentX = Math.max(paddingLeft, Math.min(paddingLeft + chartW, mouseX));
-      renderSpeedTimeChart();
+      scheduleRender();
       return;
     }
 
@@ -224,7 +224,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const closestSample = historySamples[closestIdx];
       const timeSpan = maxTs - minTs;
-      const maxAllowedGap = (timeSpan <= 3600 || ['1min', '5m', '30m', '1h'].includes(activeRange)) ? 30 : 600;
+      const backendBucketSize = Math.max(1, Math.floor(timeSpan / 400));
+      const maxAllowedGap = (timeSpan <= 3600 || ['1min', '5m', '30m', '1h'].includes(activeRange)) ? 30 : Math.max(600, backendBucketSize * 2.5);
 
       const isSampleOffline = (s) => s && (s.status_label === 'No Internet' || s.status_label === 'Connecting' || s.status_label === 'POLLER OFFLINE');
 
@@ -281,7 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       hoverState = null;
     }
-    renderSpeedTimeChart();
+    scheduleRender();
   });
 
   // --- Window Statistics Updater ---
@@ -405,6 +406,19 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchLiveHistory();
   });
 
+  // --- RAF-debounced Render Scheduler ---
+  // Ensures mousemove / drag events never stack up more than one pending canvas frame.
+  let _rafPending = false;
+  const scheduleRender = () => {
+    if (!_rafPending) {
+      _rafPending = true;
+      requestAnimationFrame(() => {
+        _rafPending = false;
+        renderSpeedTimeChart();
+      });
+    }
+  };
+
   // --- Render Speed (Mbps) vs Time Canvas Chart ---
   const renderSpeedTimeChart = () => {
     const width = canvas.clientWidth;
@@ -459,13 +473,17 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    const maxSpeedSample = historySamples.length
-      ? Math.max(...historySamples.map(s => Math.max(s.dl_mbps || 0, s.ul_mbps || 0)))
+    // Scale Y-axis to the visible window only — zoomed views show local peak resolution
+    // instead of being squashed by the global all-time peak.
+    const visibleForScale = historySamples.filter(s => s.ts >= minTs && s.ts <= maxTs);
+    const scaleBase = visibleForScale.length ? visibleForScale : historySamples;
+    const maxSpeedSample = scaleBase.length
+      ? Math.max(...scaleBase.map(s => Math.max(s.dl_mbps || 0, s.ul_mbps || 0)))
       : 0;
     const maxSpeed = Math.max(ispThrottleCapMbps * 1.3, maxSpeedSample * 1.15, 10.0);
 
-    const maxGbSample = historySamples.length
-      ? Math.max(...historySamples.map(s => (s.today_dl_gb || 0) + (s.today_ul_gb || 0)))
+    const maxGbSample = scaleBase.length
+      ? Math.max(...scaleBase.map(s => (s.today_dl_gb || 0) + (s.today_ul_gb || 0)))
       : 1;
     const maxGb = Math.max(maxGbSample * 1.2, 0.5);
 
@@ -536,7 +554,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!historySamples.length) return;
 
-    const maxAllowedGap = (timeSpan <= 3600 || ['1min', '5m', '30m', '1h'].includes(activeRange)) ? 30 : 600;
+    const backendBucketSize = Math.max(1, Math.floor(timeSpan / 400));
+    const maxAllowedGap = (timeSpan <= 3600 || ['1min', '5m', '30m', '1h'].includes(activeRange)) ? 30 : Math.max(600, backendBucketSize * 2.5);
 
     // Daily GB Overlay Line (Amber)
     ctx.lineWidth = 2;
@@ -850,7 +869,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!speedProbeTableBody) return;
 
     if (allProbeLogs.length === 0) {
-      speedProbeTableBody.innerHTML = '<tr><td colspan="7" class="loading-td">No diagnostic logs or active stress tests recorded yet.</td></tr>';
+      speedProbeTableBody.innerHTML = '<tr><td colspan="6" class="loading-td">No diagnostic logs or active stress tests recorded yet.</td></tr>';
       if (probePageInfo) probePageInfo.innerText = 'Showing 0 of 0 logs';
       if (probePrevBtn) probePrevBtn.disabled = true;
       if (probeNextBtn) probeNextBtn.disabled = true;
@@ -893,13 +912,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const todayDlUl = `${(p.today_dl_gb || 0).toFixed(2)} GB / ${(p.today_ul_gb || 0).toFixed(2)} GB`;
       const lifeDlUl  = `${(p.lifetime_dl_gb || 0).toFixed(2)} GB / ${(p.lifetime_ul_gb || 0).toFixed(2)} GB`;
-      const providerLabel = p.provider || '—';
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><strong>${dtStr}</strong></td>
         <td><strong style="color:${p.dl_mbps > 0 ? 'var(--cyan-glow)' : 'var(--text-muted)'};font-size:1.05em">${(p.dl_mbps || 0).toFixed(2)} Mbps</strong></td>
-        <td style="font-size:0.82em;color:var(--text-muted)">${providerLabel}</td>
         <td>${todayDlUl}</td>
         <td>${lifeDlUl}</td>
         <td>${stBadge}</td>
@@ -1209,7 +1226,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Polling intervals
   setInterval(fetchLiveMetrics, 2000);
-  setInterval(fetchLiveHistory, 4000);
+  // Adaptive history polling: 4s for short live ranges, 15s for heavy historical ranges
+  // to reduce SQLite pressure and chart instability when viewing large datasets.
+  let _lastHistoryFetch = 0;
+  setInterval(() => {
+    const heavyRanges = ['3d', '1w', '1m', 'lifetime'];
+    const interval = heavyRanges.includes(activeRange) ? 15000 : 4000;
+    if (Date.now() - _lastHistoryFetch >= interval) {
+      _lastHistoryFetch = Date.now();
+      fetchLiveHistory();
+    }
+  }, 1000);
   setInterval(fetchSpeedProbes, 5000);
 
   // Initial calls

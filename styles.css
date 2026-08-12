@@ -249,8 +249,7 @@ body {
   gap: 0.75rem;
 }
 
-.download-theme { border-left: 3px solid var(--cyan-glow); }
-.upload-theme { border-left: 3px solid var(--violet-glow); }
+
 
 .gauge-title {
   font-size: 0.7rem;
