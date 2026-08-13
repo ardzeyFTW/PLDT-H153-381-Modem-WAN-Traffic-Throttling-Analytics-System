@@ -14,11 +14,6 @@
     <!-- Header -->
     <header class="navbar">
       <div class="brand">
-        <div class="logo-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-          </svg>
-        </div>
         <div class="brand-text">
           <h1>Modem Traffic &amp; Throttling Analytics</h1>
           <span class="sub-badge">PLDT H153-381 Modem API (192.168.1.1) &bull; All-Device WAN Traffic</span>
@@ -37,10 +32,6 @@
           <span class="valueHighlight">192.168.1.1</span>
         </div>
         <div class="status-item">
-          <span class="label">Today Usage</span>
-          <span class="valueHighlight" id="headerTodayUsage">0.00 GB</span>
-        </div>
-        <div class="status-item">
           <span class="label">DB Samples</span>
           <span class="valueHighlight" id="headerDbRecords">--</span>
         </div>
@@ -51,22 +42,23 @@
     <main class="dashboard-grid">
       <!-- Live Real-time Bandwidth Cards -->
       <section class="card gauge-card">
-        <div class="card-header">
-          <h2>Live Internet Bandwidth</h2>
-          <span class="badge" id="liveStatusBadge">Direct Modem API (192.168.1.1)</span>
-        </div>
+          <div class="card-header" style="justify-content: space-between;">
+            <h2>Live Internet Bandwidth</h2>
+          </div>
 
         <div class="gauges-wrapper">
           <!-- Download Card -->
           <div class="gauge-box download-theme">
             <div class="gauge-title">DOWNLOAD SPEED</div>
-            <div class="gauge-value-display">
-              <span id="dlSpeedVal">0.00</span>
-              <span class="unit">Mbps</span>
-            </div>
-            <div class="gauge-sub">
-              <span>Avg Today: <strong id="dlAvgVal">0.00 Mbps</strong></span>
-              <span>Peak: <strong id="dlPeakVal">0.00 Mbps</strong></span>
+            <div class="gauge-value-row">
+              <div class="gauge-value-display">
+                <span id="dlSpeedVal">0.00</span>
+                <span class="unit">Mbps</span>
+              </div>
+              <div class="gauge-sub">
+                <span>1h Peak: <strong id="dlAvgVal">0.00 Mbps</strong></span>
+                <span>Session Max: <strong id="dlPeakVal">0.00 Mbps</strong></span>
+              </div>
             </div>
             <div class="meter-bar-container">
               <div class="meter-bar-fill" id="dlMeterFill" style="width: 0%;"></div>
@@ -76,13 +68,15 @@
           <!-- Upload Card -->
           <div class="gauge-box upload-theme">
             <div class="gauge-title">UPLOAD SPEED</div>
-            <div class="gauge-value-display">
-              <span id="ulSpeedVal">0.00</span>
-              <span class="unit">Mbps</span>
-            </div>
-            <div class="gauge-sub">
-              <span>Avg Today: <strong id="ulAvgVal">0.00 Mbps</strong></span>
-              <span>Peak: <strong id="ulPeakVal">0.00 Mbps</strong></span>
+            <div class="gauge-value-row">
+              <div class="gauge-value-display">
+                <span id="ulSpeedVal">0.00</span>
+                <span class="unit">Mbps</span>
+              </div>
+              <div class="gauge-sub">
+                <span>1h Peak: <strong id="ulAvgVal">0.00 Mbps</strong></span>
+                <span>Session Max: <strong id="ulPeakVal">0.00 Mbps</strong></span>
+              </div>
             </div>
             <div class="meter-bar-container">
               <div class="meter-bar-fill" id="ulMeterFill" style="width: 0%;"></div>

@@ -7,7 +7,6 @@
 document.addEventListener('DOMContentLoaded', () => {
   // DOM Elements
   const systemStatusPill = document.getElementById('systemStatusPill');
-  const liveStatusBadge = document.getElementById('liveStatusBadge');
   const headerTodayUsage = document.getElementById('headerTodayUsage');
   const headerDbRecords = document.getElementById('headerDbRecords');
   const currentDateBadge = document.getElementById('currentDateBadge');
@@ -53,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const ctx = canvas.getContext('2d');
 
   // Determine API Origin
-  const apiBase = window.location.origin.startsWith('http') ? window.location.origin : 'http://localhost:8085';
+  const apiBase = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://192.168.0.108:8085' : window.location.origin;
 
   // State
   let isConnected = false;
@@ -1119,11 +1118,6 @@ document.addEventListener('DOMContentLoaded', () => {
             logMessage(`[MODEM API] Connected to PLDT H153-381 — All-Device WAN Traffic (${data.network_type || 'LTE/5G'})`, 'success');
             isConnected = true;
           }
-          const sig = data.signal_icon || '0';
-          const net = data.network_type || '';
-          liveStatusBadge.innerText = `Modem API — WAN Traffic (${net}, Signal ${sig}/5)`;
-        } else {
-          liveStatusBadge.innerText = 'Reconnecting to modem...';
         }
 
         const dl = data.dl_mbps || 0.0;
@@ -1158,7 +1152,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const todayTotalGB = ((todayDlBytes + todayUlBytes) / (1024 ** 3)).toFixed(2);
-        headerTodayUsage.innerText = `${todayTotalGB} GB`;
+        if (headerTodayUsage) {
+          headerTodayUsage.innerText = `${todayTotalGB} GB`;
+        }
 
       } else {
         throw new Error('API server returned error');
@@ -1170,7 +1166,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       systemStatusPill.className = 'status-pill warn';
       systemStatusPill.innerHTML = '<span class="dot" style="background:#ffb703"></span> POLLER OFFLINE';
-      liveStatusBadge.innerText = 'Poller Offline';
     }
   };
 
@@ -1190,10 +1185,26 @@ document.addEventListener('DOMContentLoaded', () => {
         currentServerStats = data.stats || null;
 
         if (historySamples.length > 0) {
-          const sumDl = historySamples.reduce((acc, s) => acc + s.dl_mbps, 0);
-          const sumUl = historySamples.reduce((acc, s) => acc + s.ul_mbps, 0);
-          dlAvgVal.innerText = `${(sumDl / historySamples.length).toFixed(2)} Mbps`;
-          ulAvgVal.innerText = `${(sumUl / historySamples.length).toFixed(2)} Mbps`;
+          // Calculate peak values from last hour (3600 seconds)
+          const nowSec = Math.floor(Date.now() / 1000);
+          const lastHourSamples = historySamples.filter(sample => 
+            sample.ts >= nowSec - 3600
+          );
+          
+          if (lastHourSamples.length > 0) {
+            // Find peak values from last hour
+            const peakDl = Math.max(...lastHourSamples.map(s => s.dl_mbps));
+            const peakUl = Math.max(...lastHourSamples.map(s => s.ul_mbps));
+            
+            dlAvgVal.innerText = `${peakDl.toFixed(2)} Mbps`;
+            ulAvgVal.innerText = `${peakUl.toFixed(2)} Mbps`;
+          } else {
+            // Fallback to regular average if no samples in last hour
+            const sumDl = historySamples.reduce((acc, s) => acc + s.dl_mbps, 0);
+            const sumUl = historySamples.reduce((acc, s) => acc + s.ul_mbps, 0);
+            dlAvgVal.innerText = `${(sumDl / historySamples.length).toFixed(2)} Mbps`;
+            ulAvgVal.innerText = `${(sumUl / historySamples.length).toFixed(2)} Mbps`;
+          }
         }
 
         renderSpeedTimeChart();

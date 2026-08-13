@@ -10,11 +10,11 @@
   --text-sub: #57606a;
   
   /* Graph Line Color Coding */
-  --cyan-glow: #00f0ff;
-  --violet-glow: #9d4edd;
-  --amber-glow: #ffb703;
-  --green-glow: #00ff88;
-  --red-glow: #ff0055;
+  --cyan-glow: #0099b3;
+  --violet-glow: #7a3da1;
+  --amber-glow: #cc9900;
+  --green-glow: #00aa66;
+  --red-glow: #cc0044;
   
   /* Monochromatic System Colors */
   --mono-silver: #e2e8f0;
@@ -60,7 +60,7 @@ body {
   backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
   padding: 1.25rem 1.75rem;
-  border-radius: 16px;
+  border-radius: 0;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
@@ -129,7 +129,7 @@ body {
   align-items: center;
   gap: 0.4rem;
   padding: 0.25rem 0.6rem;
-  border-radius: 20px;
+  border-radius: 0;
   font-size: 0.72rem;
   font-weight: 600;
   font-family: var(--font-mono) !important;
@@ -185,7 +185,7 @@ body {
   background: var(--bg-card);
   backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
+  border-radius: 0;
   padding: 1.5rem;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   transition: border-color 0.25s, box-shadow 0.25s;
@@ -221,7 +221,7 @@ body {
   color: var(--text-muted);
   border: 1px solid var(--mono-badge-border);
   padding: 0.2rem 0.6rem;
-  border-radius: 20px;
+  border-radius: 0;
   font-size: 0.72rem;
   font-family: var(--font-mono) !important;
 }
@@ -235,14 +235,14 @@ body {
 /* Gauges - Monochromatic with Subtle Line Accents */
 .gauges-wrapper {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 1.25rem;
 }
 
 .gauge-box {
   background: rgba(10, 11, 14, 0.7);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 0;
   padding: 1.25rem;
   display: flex;
   flex-direction: column;
@@ -257,6 +257,13 @@ body {
   letter-spacing: 0.05em;
   color: var(--text-muted);
   font-family: var(--font-mono) !important;
+}
+
+.gauge-value-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
 }
 
 .gauge-value-display {
@@ -281,7 +288,9 @@ body {
 
 .gauge-sub {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
   font-size: 0.72rem;
   color: var(--text-muted);
   font-family: var(--font-mono) !important;
@@ -301,7 +310,7 @@ body {
 
 .meter-bar-fill {
   height: 100%;
-  border-radius: 3px;
+  border-radius: 2px;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -322,7 +331,7 @@ body {
 .metric-tile {
   background: rgba(10, 11, 14, 0.7);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 0;
   padding: 1rem;
   display: flex;
   align-items: center;
@@ -380,7 +389,7 @@ body {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-main);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 0;
   padding: 0.35rem 0.75rem;
   font-size: 0.78rem;
   font-family: var(--font-mono) !important;
