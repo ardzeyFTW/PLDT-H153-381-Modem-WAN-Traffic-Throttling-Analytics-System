@@ -675,6 +675,18 @@ def poll_modem_loop():
         print("[ERROR] huawei-lte-api not installed. Run: pip install huawei-lte-api")
         sys.exit(1)
 
+    # Initialize lifetime bytes from DB on startup
+    if poll_lifetime_dl == 0 and poll_lifetime_ul == 0:
+        try:
+            conn = get_db()
+            row = conn.execute("SELECT SUM(download_bytes), SUM(upload_bytes) FROM daily_stats").fetchone()
+            if row and row[0] is not None:
+                poll_lifetime_dl = row[0]
+                poll_lifetime_ul = row[1]
+            conn.close()
+        except Exception as e:
+            print(f"[DB INIT] Lifetime stats load error: {e}")
+
     day_stats        = poll_day_stats
     lifetime_dl_bytes = poll_lifetime_dl
     lifetime_ul_bytes = poll_lifetime_ul
