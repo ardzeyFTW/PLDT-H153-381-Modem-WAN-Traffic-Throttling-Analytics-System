@@ -147,7 +147,7 @@ poll_last_session_ul  = None # last known modem session UL counter
 # ─── SQLite Database ──────────────────────────────────────────────────────────
 def get_db():
     db_path = os.path.join(BASE_DIR, DB_FILE)
-    conn = sqlite3.connect(db_path, timeout=15.0, check_same_thread=False)
+    conn = sqlite3.connect(db_path, timeout=30.0, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.row_factory = sqlite3.Row
@@ -623,8 +623,6 @@ def record_diagnostic_log(provider, status_desc, is_error=True):
             except Exception:
                 pass
         conn.close()
-        sync_sample_status_from_probes()
-        load_cache_from_db()
     except Exception as e:
         print(f"[DIAGNOSTIC LOG ERROR] {e}")
 
@@ -701,10 +699,11 @@ def poll_modem_loop():
     while True:
         try:
             conn = get_db()
-            with Connection(MODEM_URL, username=MODEM_USER, password=MODEM_PASS) as modem_conn:
+            with Connection(MODEM_URL, username=MODEM_USER, password=MODEM_PASS, timeout=10) as modem_conn:
                 client = Client(modem_conn)
                 print("[MODEM] Authenticated — polling started.")
                 consecutive_login_failures = 0
+                consecutive_poll_errors = 0
                 with state_lock:
                     current_state["modem_status"] = "online"
 
@@ -722,6 +721,7 @@ def poll_modem_loop():
 
                         stats  = client.monitoring.traffic_statistics()
                         status = client.monitoring.status()
+                        consecutive_poll_errors = 0
 
                         now    = time.time()
                         dt_obj = get_local_datetime()
@@ -883,7 +883,11 @@ def poll_modem_loop():
                         time.sleep(POLL_INTERVAL)
 
                     except Exception as inner_e:
-                        print(f"[POLL ERROR] {inner_e}")
+                        consecutive_poll_errors += 1
+                        print(f"[POLL ERROR] (attempt {consecutive_poll_errors}/3): {inner_e}")
+                        if consecutive_poll_errors < 3:
+                            time.sleep(2.0)
+                            continue
                         with state_lock:
                             current_state["modem_status"] = "reconnecting"
                             current_state["status"]       = "No Internet"
@@ -891,6 +895,8 @@ def poll_modem_loop():
 
             conn.commit()
             conn.close()
+            # Cooldown after session ends before reconnecting
+            time.sleep(5.0)
 
         except Exception as outer_e:
             err_msg = str(outer_e)
