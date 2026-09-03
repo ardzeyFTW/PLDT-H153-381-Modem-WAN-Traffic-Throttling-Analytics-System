@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const ctx = canvas.getContext('2d');
 
   // Determine API Origin
-  const apiBase = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://192.168.0.108:8085' : window.location.origin;
+  const apiBase = window.location.protocol === 'file:' ? 'http://localhost:8085' : window.location.origin;
 
   // State
   let isConnected = false;

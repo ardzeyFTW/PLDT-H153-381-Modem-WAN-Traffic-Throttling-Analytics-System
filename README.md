@@ -146,39 +146,75 @@ Clicking **` Reset DB`** on the dashboard requires the user to explicitly type *
 
 ## Installation & Setup Guide
 
-### 1. Prerequisites
-- Python 3.9 or higher
-- Access to the PLDT H153-381 Web UI (Default IP: `192.168.1.1`)
+### Option 1: 1-Click Windows Setup (Recommended)
 
-### 2. Clone Repository & Install Dependencies
+1. Clone or download the repository.
+2. Double-click **`start.bat`**.
+
+That's it! `start.bat` will automatically:
+- Verify Python 3.9+ is installed (and provide a 1-click download link if missing).
+- Create an isolated Python virtual environment (`.venv`).
+- Install all dependencies automatically.
+- Launch the **interactive setup wizard** to prompt for your modem IP, username, and password if not yet configured.
+- Check if port `8085` is in use, and automatically find the next free port if occupied.
+- Display the exact IP address and port to access the dashboard on your browser and other network devices.
+- Automatically open the dashboard in your default browser.
+
+---
+
+### Option 2: 1-Click Linux / macOS Setup
+
 ```bash
-git clone https://github.com/ardzeyFTW/PLDT-H153-381-Modem-WAN-Traffic-Throttling-Analytics-System.git
-cd PLDT-H153-381-Modem-WAN-Traffic-Throttling-Analytics-System
-
-pip install huawei-lte-api
+chmod +x start.sh
+./start.sh
 ```
+Runs the same automated virtualenv creation, dependency installation, interactive setup wizard, and server launch.
 
-### 3. Configure Environment Variables
-Copy `.env.example` to `.env` and fill in your modem credentials:
+---
 
-```bash
-cp .env.example .env
-```
+### Option 3: Advanced / Homelab (Docker Compose)
 
-Edit `.env` with your modem credentials:
-```env
-MODEM_URL=http://192.168.1.1/
-MODEM_USER=pldthome
-MODEM_PASS=YOUR_ACTUAL_MODEM_PASSWORD
-PORT=8085
-```
-*(Note: `.env` is listed in `.gitignore` to keep your credentials safe from being pushed to Git).*
+For users running home servers, Raspberry Pis, Unraid, TrueNAS, or Portainer:
 
-### 4. Start the Application
-```bash
-python snmp_poller.py
-```
-Open your browser to: **`http://localhost:8085`** (or `http://192.168.x.x:8085`).
+1. Copy `.env.example` to `.env` and fill in your modem credentials:
+   ```bash
+   cp .env.example .env
+   ```
+2. Start the container in the background:
+   ```bash
+   docker compose up -d
+   ```
+3. Open `http://<SERVER_IP>:8085` in your browser. Database history is persisted in `traffic_evidence.db`.
+
+---
+
+### Option 4: Manual Setup
+
+1. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. **Configure Credentials**:
+   ```bash
+   python setup_wizard.py
+   ```
+   *(Or manually copy `.env.example` to `.env` and edit your modem credentials).*
+3. **Start the Application**:
+   ```bash
+   python snmp_poller.py
+   ```
+   The terminal will output the local and network URLs:
+   ```text
+   ========================================================================
+      PLDT H153-381 WAN Traffic & Throttling Analytics System
+   ========================================================================
+      Web Dashboard is live and running!
+
+      Open this address in your browser:
+        -> Local Browser:   http://localhost:8085
+        -> Network Devices: http://192.168.1.50:8085
+   ========================================================================
+   ```
 
 ---
 

@@ -37,6 +37,8 @@ import json
 import sqlite3
 import threading
 import io
+import socket
+import webbrowser
 import urllib.request
 from datetime import datetime, timezone, timedelta
 try:
@@ -690,7 +692,33 @@ def poll_modem_loop():
     lifetime_ul_bytes = poll_lifetime_ul
 
     last_session_dl = poll_last_session_dl
-    last_session_ul = poll_last_session_ul
+    global MODEM_URL, MODEM_USER, MODEM_PASS
+    PLACEHOLDER_PASSWORDS = {"", "YOUR_MODEM_PASSWORD", "YOUR_MODEM_PASSWORD_HERE", "YOUR_ACTUAL_MODEM_PASSWORD"}
+
+    while MODEM_PASS in PLACEHOLDER_PASSWORDS:
+        print("\n" + "=" * 72)
+        print(" [SETUP REQUIRED] Modem password has not been configured yet!")
+        print(" Please run 'start.bat' or 'python setup_wizard.py' to enter your credentials,")
+        print(" or edit your .env file with your modem password.")
+        print("=" * 72 + "\n")
+        with state_lock:
+            current_state["modem_status"] = "setup_required"
+            current_state["status"]       = "Setup Required"
+        record_diagnostic_log("Setup", "Modem password not configured. Please run start.bat or setup_wizard.py", is_error=True)
+        time.sleep(5)
+        # Check if user has updated .env file
+        if os.path.isfile(env_file):
+            with open(env_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        if k.strip() == "MODEM_PASS":
+                            MODEM_PASS = v.strip().strip('"').strip("'")
+                        elif k.strip() == "MODEM_USER":
+                            MODEM_USER = v.strip().strip('"').strip("'")
+                        elif k.strip() == "MODEM_URL":
+                            MODEM_URL = v.strip().strip('"').strip("'")
 
     print(f"[MODEM] Connecting to PLDT H153-381 at {MODEM_URL} ...")
 
@@ -1278,9 +1306,63 @@ class Handler(BaseHTTPRequestHandler):
         return  # suppress access log noise
 
 
-def run_server(port: int = 8085):
-    srv = ThreadingHTTPServer(("0.0.0.0", port), Handler)
-    print(f"[HTTP] Dashboard listening at http://0.0.0.0:{port}")
+def get_local_ip() -> str:
+    """Detect the machine's primary local LAN IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+def get_available_port(preferred_port: int, max_range: int = 50) -> int:
+    """
+    Check if preferred_port is available. If in use, scan sequentially for the next free port.
+    """
+    for candidate in range(preferred_port, preferred_port + max_range):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.bind(("0.0.0.0", candidate))
+                return candidate
+        except OSError:
+            continue
+    raise RuntimeError(f"Could not find an available port in range {preferred_port}-{preferred_port + max_range}")
+
+
+def run_server(desired_port: int = 8085):
+    actual_port = get_available_port(desired_port)
+    if actual_port != desired_port:
+        print(f"\n[PORT NOTICE] Configured port {desired_port} is currently in use.")
+        print(f"              Automatically selected available port {actual_port} instead.\n")
+
+    srv = ThreadingHTTPServer(("0.0.0.0", actual_port), Handler)
+    local_ip = get_local_ip()
+
+    print("=" * 72)
+    print("   PLDT H153-381 WAN Traffic & Throttling Analytics System")
+    print("=" * 72)
+    print("   Web Dashboard is live and running!")
+    print()
+    print("   Open this address in your browser:")
+    print(f"     -> Local Browser:   http://localhost:{actual_port}")
+    if local_ip != "127.0.0.1":
+        print(f"     -> Network Devices: http://{local_ip}:{actual_port}")
+    print("=" * 72 + "\n")
+
+    # Automatically open local browser if not disabled
+    if os.environ.get("NO_BROWSER", "").lower() not in ("1", "true", "yes"):
+        def _open():
+            time.sleep(1.0)
+            try:
+                webbrowser.open(f"http://localhost:{actual_port}")
+            except Exception:
+                pass
+        threading.Thread(target=_open, daemon=True).start()
+
     srv.serve_forever()
 
 

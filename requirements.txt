@@ -1,0 +1,3 @@
+# PLDT H153-381 Modem WAN Traffic & Throttling Analytics System
+# External Dependencies
+huawei-lte-api>=3.0.0

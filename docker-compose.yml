@@ -1,0 +1,14 @@
+services:
+  pldt-traffic:
+    build: .
+    container_name: pldt-traffic-analyzer
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    env_file:
+      - .env
+    volumes:
+      # Persist SQLite evidence database across container updates/restarts
+      - ./traffic_evidence.db:/app/traffic_evidence.db
+    # In case of bridge mode or direct host routing needs on Linux:
+    # network_mode: host
